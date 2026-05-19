@@ -1,9 +1,10 @@
 import re
 import logging
-from aiogram import Router
+from aiogram import Bot, Router
 from aiogram.filters import Command
 from aiogram.types import Message
 from parser import fetch_trending
+from config import CHANNEL_ID
 
 logger = logging.getLogger(__name__)
 router = Router()
@@ -57,7 +58,8 @@ async def cmd_help(message: Message) -> None:
         "/trending — топ-10 за неделю (все языки)\n"
         "/trending python — топ-10 по языку\n"
         "/trending daily — топ за день\n"
-        "/trending monthly — топ за месяц",
+        "/trending monthly — топ за месяц\n"
+        "/senddigest — отправить дайджест в канал прямо сейчас",
         parse_mode="HTML",
     )
 
@@ -93,3 +95,30 @@ async def cmd_trending(message: Message) -> None:
         parse_mode="HTML",
         disable_web_page_preview=True,
     )
+
+
+@router.message(Command("senddigest"))
+async def cmd_senddigest(message: Message, bot: Bot) -> None:
+    if not CHANNEL_ID:
+        await message.answer("❌ CHANNEL_ID не задан в переменных окружения.")
+        return
+
+    await message.answer("⏳ Загружаю данные и отправляю в канал...")
+    repos = await fetch_trending(since="weekly")
+
+    if repos is None:
+        await message.answer("❌ Не удалось получить данные, попробуйте позже.")
+        return
+
+    text = format_repos(repos, since="weekly")
+    try:
+        await bot.send_message(
+            chat_id=CHANNEL_ID,
+            text=text,
+            parse_mode="HTML",
+            disable_web_page_preview=True,
+        )
+        await message.answer("✅ Дайджест отправлен в канал!")
+    except Exception as exc:
+        logger.error("senddigest failed: %s", exc)
+        await message.answer(f"❌ Ошибка при отправке: {exc}")

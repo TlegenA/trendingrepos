@@ -1,6 +1,7 @@
 import logging
 import httpx
 from bs4 import BeautifulSoup
+from config import GITHUB_TOKEN
 
 logger = logging.getLogger(__name__)
 
@@ -12,6 +13,12 @@ _HEADERS = {
         "(KHTML, like Gecko) Chrome/120.0 Safari/537.36"
     ),
 }
+_README_HEADERS = {
+    "Accept": "application/vnd.github.raw+json",
+    "X-GitHub-Api-Version": "2022-11-28",
+    "User-Agent": "github-trending-bot/1.0",
+}
+_README_MAX_CHARS = 4000
 
 
 async def fetch_trending(language: str = "", since: str = "weekly") -> list[dict] | None:
@@ -61,3 +68,21 @@ async def fetch_trending(language: str = "", since: str = "weekly") -> list[dict
             logger.error("Error parsing repo article: %s", exc)
 
     return repos
+
+
+async def fetch_readme(repo_name: str) -> str:
+    """Fetch README content for a repo (owner/repo format). Returns empty string on failure."""
+    headers = dict(_README_HEADERS)
+    if GITHUB_TOKEN:
+        headers["Authorization"] = f"Bearer {GITHUB_TOKEN}"
+
+    url = f"https://api.github.com/repos/{repo_name}/readme"
+    try:
+        async with httpx.AsyncClient(timeout=15, follow_redirects=True) as client:
+            resp = await client.get(url, headers=headers)
+            if resp.status_code == 200:
+                text = resp.text
+                return text[:_README_MAX_CHARS] if len(text) > _README_MAX_CHARS else text
+    except Exception as exc:
+        logger.warning("Failed to fetch README for %s: %s", repo_name, exc)
+    return ""
